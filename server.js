@@ -96,13 +96,17 @@ app.post('/user_missions', async (req, res) => {
     const { user_id, mission_id } = req.body;
     try {
         const connection = await mysql.createConnection(dbConfig);
-        await connection.execute('INSERT INTO user_missions (user_id, mission_id) VALUES (?, ?)', [user_id, mission_id]);
+        await connection.execute(
+            'INSERT INTO user_missions (user_id, mission_id) VALUES (?, ?)',
+            [user_id, mission_id]
+        );
         res.status(201).json({ message: 'Mission accepted!' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error accepting mission' });
+        console.error('POST /user_missions error:', err);  // full log in Render
+        res.status(500).json({ error: err.message });       // <-- send real MySQL message
     }
 });
+
 
 app.put('/user_missions/:id', async (req, res) => {
     const { id } = req.params;
