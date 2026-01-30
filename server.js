@@ -60,7 +60,6 @@ app.post('/missions', requireAdmin, async (req, res) => {
         const { title, category, difficulty, xp } = req.body;
         if (!title) return res.status(400).json({ error: 'title required' });
 
-        // Determine xp: preference to difficulty mapping, else use provided xp or default 0
         let finalXp = 0;
         if (difficulty && DIFFICULTY_XP[difficulty]) finalXp = DIFFICULTY_XP[difficulty];
         else finalXp = Number(xp || 0);
@@ -195,9 +194,9 @@ app.get('/missions/accepted/:userId', async (req, res) => {
     try {
         const conn = await mysql.createConnection(dbConfig);
         const [rows] = await conn.execute(
-            `SELECT um.id AS user_mission_id, m.* 
-       FROM user_missions um JOIN missions m ON um.mission_id = m.id
-       WHERE um.user_id = ? AND um.completed = FALSE`,
+            `SELECT um.id AS user_mission_id, m.*
+             FROM user_missions um JOIN missions m ON um.mission_id = m.id
+             WHERE um.user_id = ? AND um.completed = FALSE`,
             [userId]
         );
         await conn.end();
@@ -214,8 +213,8 @@ app.get('/missions/completed/:userId', async (req, res) => {
         const conn = await mysql.createConnection(dbConfig);
         const [rows] = await conn.execute(
             `SELECT um.id AS user_mission_id, m.*
-       FROM user_missions um JOIN missions m ON um.mission_id = m.id
-       WHERE um.user_id = ? AND um.completed = TRUE`,
+             FROM user_missions um JOIN missions m ON um.mission_id = m.id
+             WHERE um.user_id = ? AND um.completed = TRUE`,
             [userId]
         );
         await conn.end();
@@ -227,10 +226,13 @@ app.get('/missions/completed/:userId', async (req, res) => {
 });
 
 app.post('/users', async (req, res) => {
-    const { username, email } = req.body;
+    const { username, email, role = 'user' } = req.body;
     try {
         const conn = await mysql.createConnection(dbConfig);
-        const [result] = await conn.execute('INSERT INTO users (username, email) VALUES (?, ?)', [username, email]);
+        const [result] = await conn.execute(
+            'INSERT INTO users (username, email, role) VALUES (?, ?, ?)',
+            [username, email, role]
+        );
         await conn.end();
         res.status(201).json({ id: result.insertId });
     } catch (err) {
@@ -247,6 +249,50 @@ app.get('/users', async (req, res) => {
         res.json(rows);
     } catch (err) {
         console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/users/:id/summary', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const conn = await mysql.createConnection(dbConfig);
+
+        const [xpRows] = await conn.execute(
+            `SELECT COALESCE(SUM(m.xp),0) AS total_xp
+             FROM user_missions um
+             JOIN missions m ON um.mission_id = m.id
+             WHERE um.user_id = ? AND um.completed = TRUE`,
+            [id]
+        );
+
+        const [acceptedRows] = await conn.execute(
+            `SELECT COUNT(*) AS accepted FROM user_missions WHERE user_id = ? AND completed = FALSE`,
+            [id]
+        );
+
+        const [completedRows] = await conn.execute(
+            `SELECT COUNT(*) AS completed FROM user_missions WHERE user_id = ? AND completed = TRUE`,
+            [id]
+        );
+
+        const [publicRows] = await conn.execute(
+            `SELECT COUNT(*) AS public FROM missions WHERE id NOT IN (SELECT mission_id FROM user_missions WHERE user_id = ?)`,
+            [id]
+        );
+
+        await conn.end();
+
+        res.json({
+            total_xp: xpRows[0].total_xp || 0,
+            counts: {
+                public: publicRows[0].public || 0,
+                accepted: acceptedRows[0].accepted || 0,
+                completed: completedRows[0].completed || 0,
+            },
+        });
+    } catch (err) {
+        console.error('GET /users/:id/summary error', err);
         res.status(500).json({ error: err.message });
     }
 });
