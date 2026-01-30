@@ -22,12 +22,26 @@ const DIFFICULTY_XP = {
     hard: 50,
 };
 
-function requireAdmin(req, res, next) {
-    if (req.header('x-admin') === 'true') next();
-    else res.status(403).json({ error: 'Admin only route' });
+async function requireAdmin(req, res, next) {
+    const userId = req.header('x-user-id');
+    if (!userId) return res.status(401).json({ error: 'Missing x-user-id header' });
+
+    try {
+        const conn = await mysql.createConnection(dbConfig);
+        const [rows] = await conn.execute('SELECT role FROM users WHERE id = ?', [userId]);
+        await conn.end();
+
+        if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        if (rows[0].role !== 'admin') return res.status(403).json({ error: 'Admin only route' });
+
+        next();
+    } catch (err) {
+        console.error('requireAdmin error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 }
 
-app.get('/', (req, res) => res.send('🌱 GreenXP API is running!'));
+app.get('/', (req, res) => res.send('GreenXP API is running!'));
 
 app.get('/missions', async (req, res) => {
     try {
@@ -238,5 +252,5 @@ app.get('/users', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`🌿 GreenXP server running on port ${port}`);
+    console.log(`GreenXP server running on port ${port}`);
 });
